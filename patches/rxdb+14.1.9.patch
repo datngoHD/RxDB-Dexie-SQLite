@@ -1,0 +1,97 @@
+diff --git a/node_modules/rxdb/dist/lib/plugins/storage-dexie/dexie-query.js b/node_modules/rxdb/dist/lib/plugins/storage-dexie/dexie-query.js
+index e719cc1..cfb040c 100644
+--- a/node_modules/rxdb/dist/lib/plugins/storage-dexie/dexie-query.js
++++ b/node_modules/rxdb/dist/lib/plugins/storage-dexie/dexie-query.js
+@@ -8,6 +8,7 @@ exports.dexieQuery = dexieQuery;
+ exports.getKeyRangeByQueryPlan = getKeyRangeByQueryPlan;
+ var _rxQueryHelper = require("../../rx-query-helper");
+ var _dexieHelper = require("./dexie-helper");
++var Dexie = require("dexie");
+ function getKeyRangeByQueryPlan(queryPlan, IDBKeyRange) {
+   if (!IDBKeyRange) {
+     if (typeof window === 'undefined') {
+@@ -72,34 +73,37 @@ async function dexieQuery(instance, preparedQuery) {
+       index = store.index(indexName);
+     }
+     var cursorReq = index.openCursor(keyRange);
+-    await new Promise(res => {
+-      cursorReq.onsuccess = function (e) {
+-        var cursor = e.target.result;
+-        if (cursor) {
+-          // We have a record in cursor.value
+-          var docData = (0, _dexieHelper.fromDexieToStorage)(cursor.value);
+-          if (!docData._deleted && (!queryMatcher || queryMatcher(docData))) {
+-            rows.push(docData);
+-          }
+ 
+-          /**
+-           * If we do not have to manually sort
+-           * and have enough documents,
+-           * we can abort iterating over the cursor
+-           * because we already have every relevant document.
+-           */
+-          if (queryPlan.sortFieldsSameAsIndexFields && rows.length === skipPlusLimit) {
+-            res();
++    await Dexie.waitFor(
++      new Dexie.Promise(res => {
++        cursorReq.onsuccess = async function (e) {
++          var cursor = e.target.result;
++          if (cursor) {
++            // We have a record in cursor.value
++            var docData = (0, _dexieHelper.fromDexieToStorage)(cursor.value);
++            if (!docData._deleted && (!queryMatcher || queryMatcher(docData))) {
++              rows.push(docData);
++            }
++
++            /**
++             * If we do not have to manually sort
++             * and have enough documents,
++             * we can abort iterating over the cursor
++             * because we already have every relevant document.
++             */
++            if (queryPlan.sortFieldsSameAsIndexFields && rows.length === skipPlusLimit) {
++              res();
++            } else {
++              cursor.continue();
++            }
+           } else {
+-            cursor.continue();
++            // Iteration complete
++            res();
+           }
+-        } else {
+-          // Iteration complete
+-          res();
+-        }
+-      };
+-    });
++        };
++      }));
+   });
++
+   if (!queryPlan.sortFieldsSameAsIndexFields) {
+     var sortComparator = (0, _rxQueryHelper.getSortComparator)(instance.schema, preparedQuery.query);
+     rows = rows.sort(sortComparator);
+@@ -107,7 +111,6 @@ async function dexieQuery(instance, preparedQuery) {
+ 
+   // apply skip and limit boundaries.
+   rows = rows.slice(skip, skipPlusLimit);
+-
+   /**
+    * Comment this in for debugging to check all fields in the database.
+    */
+@@ -148,12 +151,12 @@ async function dexieCount(instance, preparedQuery) {
+       index = store.index(indexName);
+     }
+     var request = index.count(keyRange);
+-    count = await new Promise((res, rej) => {
++    count = await await Dexie.waitFor(new Dexie.Promise((res, rej) => {
+       request.onsuccess = function () {
+         res(request.result);
+       };
+       request.onerror = err => rej(err);
+-    });
++    }));
+   });
+   return count;
+ }

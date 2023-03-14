@@ -1,0 +1,10 @@
+{
+  "extends": "@tsconfig/react-native/tsconfig.json",
+  "include": [
+    "src/**/*.ts",
+    "test/**/*.spec.ts"
+  ],
+  "compilerOptions": {
+    "types": ["node"]
+  },
+}
